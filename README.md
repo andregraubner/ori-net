@@ -1,7 +1,7 @@
 
 # Ori-Net
 
-[![Python][]](https://www.python.org/downloads/)[![PyTorch][]](https://pytorch.org/)
+![PyTorch](https://img.shields.io/badge/PyTorch-%23EE4C2C.svg?style=for-the-badge&logo=PyTorch&logoColor=white)
 
 Ori-Net is a minimalistic PyTorch implementation for fine-tuning [Caduceus](https://github.com/kuleshov-group/caduceus) to predict plasmid Origins of Replication (ORIs).
 
