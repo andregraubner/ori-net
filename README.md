@@ -33,7 +33,8 @@ Special thanks to the following open-source projects:
 
 ## Citation
 
-If you use this code in your research, please cite:```bibtex
+If you use this code in your research, please cite:
+```
 @misc{ori-net,
   author = {Andre Graubner},
   title = {Ori-Net: Fine-tuning Caduceus for Plasmid ORI Prediction},
@@ -45,5 +46,4 @@ If you use this code in your research, please cite:```bibtex
 ```
 
 ---
-
 **Note:** This is a minimalistic implementation intended for research purposes. For production use, additional testing and optimization may be required.
