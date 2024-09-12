@@ -3,6 +3,7 @@ from Bio import SeqIO
 import pandas as pd
 import random
 import torch
+from sklearn.model_selection import train_test_split
 
 def random_subsequence(sequence, start, end, n):
     """Generate a random subsequence that contains the start and end location"""
@@ -34,15 +35,10 @@ def random_subsequence(sequence, start, end, n):
 
 class OriDataset(Dataset):
 
-    def __init__(self, path):
+    def __init__(self, annotations):
 
-        self.annotations = pd.read_csv(path + "/annotations.csv")
-        mask = self.annotations.duplicated('Refseq', keep=False)
-        self.annotations = self.annotations[~mask]
-
-        self.annotations.set_index('Refseq', inplace=True)
-
-        self.sequences = list(SeqIO.parse(path + "/sequence.fasta", "fasta"))
+        self.annotations = annotations
+        self.sequences = list(SeqIO.parse("sequences.fasta", "fasta"))
         self.sequences = [s for s in self.sequences if len(s.seq)]
 
     def __getitem__(self, idx):
@@ -61,3 +57,51 @@ class OriDataset(Dataset):
 
     def __len__(self):
         return len(self.sequences)
+
+def get_split(split_name):
+
+    annotations = pd.read_csv("DoriC12.1/DoriC12.1_plasmid.csv")
+    print(annotations.shape)
+    mask = annotations.duplicated('Refseq', keep=False)
+    annotations = annotations[~mask]
+    annotations.set_index('Refseq', inplace=True)
+    print(annotations.shape)
+
+    if split_name == "random":
+        train, test = train_test_split(annotations, train_size=0.9)
+        return OriDataset(train), OriDataset(test)
+    elif split_name == "taxonomy_islands":
+        print(annotations.columns)
+        print(annotations["Lineage"])
+
+        # Define the taxonomic levels
+        levels = ['Kingdom', 'Phylum', 'Class', 'Order', 'Family', 'Genus', 'Species', 'Strain']
+        
+        # Split the taxonomy column
+        annotations[levels] = annotations['Lineage'].str.split(',', expand=True)
+        
+        # Trim whitespace from the new columns
+        for level in levels:
+            annotations[level] = annotations[level].str.strip()
+        
+        # Fill NaN values with empty string
+        annotations[levels] = annotations[levels].fillna('')
+
+        print(annotations["Class"])
+
+        class_counts = annotations['Class'].value_counts()
+
+        # Create a boolean mask for classes appearing over 25 times
+        mask = annotations['Class'].map(class_counts) > 25
+        
+        # Split the dataframe
+        train = annotations[mask]
+        test = annotations[~mask]
+
+        print(len(train))
+        print(len(test))
+        print(train["Class"].head())
+        
+        pass
+    else: 
+        raise ValueError

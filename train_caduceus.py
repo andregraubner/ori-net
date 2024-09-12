@@ -5,7 +5,7 @@ from tqdm import tqdm
 
 from model import OriNet
 
-from data import OriDataset
+from data import get_split
 from torch.utils.data import DataLoader
 from transformers import AutoTokenizer, get_cosine_schedule_with_warmup
 
@@ -14,18 +14,22 @@ from torch.cuda.amp import GradScaler, autocast
 
 import seaborn as sns
 import matplotlib.pyplot as plt
-import wandb
 
-wandb.init(
-    project="ori-net",
-)
+#import wandb
+
+#wandb.init(
+#    project="ori-net",
+#)
 
 # Initialize dataset
 # We use batch size 1 to not have to deal with bidirectional Mamba padding
-dataset = OriDataset("./dataset")
-train, test = torch.utils.data.random_split(dataset, [0.9, 0.1], torch.Generator().manual_seed(42))
+#dataset = OriDataset("./DoriC12.1/")
+#train, test = torch.utils.data.random_split(dataset, [0.9, 0.1], torch.Generator().manual_seed(42))
+train, test = get_split("taxonomy_islands")
 train_loader = DataLoader(train, batch_size=1, shuffle=True)
 test_loader = DataLoader(test, batch_size=1, shuffle=False)
+
+quit()
 
 # Initialize model
 base_model = "kuleshov-group/caduceus-ps_seqlen-131k_d_model-256_n_layer-16"
@@ -120,10 +124,10 @@ for epoch in range(n_epochs):
             scaler.update()
             optimizer.zero_grad()
             scheduler.step()
-            wandb.log({
-                "train loss": np.mean(losses),
-                "lr": optimizer.param_groups[0]['lr']
-            }, step=total_steps)
+            #wandb.log({
+            #    "train loss": np.mean(losses),
+            #    "lr": optimizer.param_groups[0]['lr']
+            #}, step=total_steps)
 
         total_steps += 1
         
