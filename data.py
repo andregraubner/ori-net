@@ -11,6 +11,7 @@ def random_subsequence(sequence, start, end, n):
     
     # Step 1: Calculate the effective length of the slice
     if end < start:
+        print(end, start)
         slice_length = length - start + end
     else:
         slice_length = end - start
@@ -39,21 +40,30 @@ class OriDataset(Dataset):
 
         self.annotations = annotations
         self.sequences = list(SeqIO.parse("sequences.fasta", "fasta"))
-        self.sequences = [s for s in self.sequences if len(s.seq)]
+
+        # Filter out, have to take seq.id[:-2] because the download added .1 or .2 if we had multiple entries
+        self.sequences = [seq for seq in self.sequences if seq.id[:-2] in self.annotations.index]
+        
+        print("Before filtering:", len(self.sequences))
+        self.sequences = [seq for seq in self.sequences if len(seq.seq) <= 32000]
+        print("After filtering:", len(self.sequences))
 
     def __getitem__(self, idx):
+
         data = self.sequences[idx]
         seq = str(data.seq)
         label = self.annotations.loc[data.id[:-2]]
         start = label["OriC start"] - 1
         end = label["OriC end"] - 1
 
+        # In reality, there are just a few instances where start == len(seq). 
+        # In this case, this code sets it to 0
         start = start % len(seq)
-        end = end % len(seq)
+        end = end % len(seq)    
 
-        seq, start, end = random_subsequence(seq, start, end, min(16000, len(seq)))
+        #seq, start, end = random_subsequence(seq, start, end, min(16000, len(seq)))
 
-        return seq, (start, end), str(data.name)
+        return seq, (start, end), label.to_dict()
 
     def __len__(self):
         return len(self.sequences)
@@ -61,18 +71,14 @@ class OriDataset(Dataset):
 def get_split(split_name):
 
     annotations = pd.read_csv("DoriC12.1/DoriC12.1_plasmid.csv")
-    print(annotations.shape)
     mask = annotations.duplicated('Refseq', keep=False)
     annotations = annotations[~mask]
     annotations.set_index('Refseq', inplace=True)
-    print(annotations.shape)
 
     if split_name == "random":
         train, test = train_test_split(annotations, train_size=0.9)
         return OriDataset(train), OriDataset(test)
     elif split_name == "taxonomy_islands":
-        print(annotations.columns)
-        print(annotations["Lineage"])
 
         # Define the taxonomic levels
         levels = ['Kingdom', 'Phylum', 'Class', 'Order', 'Family', 'Genus', 'Species', 'Strain']
@@ -87,8 +93,6 @@ def get_split(split_name):
         # Fill NaN values with empty string
         annotations[levels] = annotations[levels].fillna('')
 
-        print(annotations["Class"])
-
         class_counts = annotations['Class'].value_counts()
 
         # Create a boolean mask for classes appearing over 25 times
@@ -97,11 +101,7 @@ def get_split(split_name):
         # Split the dataframe
         train = annotations[mask]
         test = annotations[~mask]
-
-        print(len(train))
-        print(len(test))
-        print(train["Class"].head())
         
-        pass
+        return OriDataset(train), OriDataset(test)
     else: 
         raise ValueError
