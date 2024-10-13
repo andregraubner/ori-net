@@ -36,10 +36,10 @@ def random_subsequence(sequence, start, end, n):
 
 class OriDataset(Dataset):
 
-    def __init__(self, annotations):
+    def __init__(self, annotations, sequences):
 
         self.annotations = annotations
-        self.sequences = list(SeqIO.parse("sequences.fasta", "fasta"))
+        self.sequences = list(SeqIO.parse(sequences, "fasta"))
 
         # Filter out, have to take seq.id[:-2] because the download added .1 or .2 if we had multiple entries
         self.sequences = [seq for seq in self.sequences if seq.id[:-2] in self.annotations.index]
@@ -70,14 +70,24 @@ class OriDataset(Dataset):
 
 def get_split(split_name):
 
-    annotations = pd.read_csv("DoriC12.1/DoriC12.1_plasmid.csv")
-    mask = annotations.duplicated('Refseq', keep=False)
-    annotations = annotations[~mask]
-    annotations.set_index('Refseq', inplace=True)
+    plasmid_annotations = pd.read_csv("DoriC12.1/DoriC12.1_plasmid.csv")
+    print(plasmid_annotations.head())
+    mask = plasmid_annotations.duplicated('Refseq', keep=False)
+    plasmid_annotations = plasmid_annotations[~mask]
+    plasmid_annotations.set_index('Refseq', inplace=True)
 
-    if split_name == "random":
-        train, test = train_test_split(annotations, train_size=0.9)
-        return OriDataset(train), OriDataset(test)
+    bacteria_annotations = pd.read_csv("DoriC12.1/DoriC12.1_bacteria.csv")
+    print(bacteria_annotations.head())
+    mask = bacteria_annotations.duplicated('Refseq', keep=False)
+    bacteria_annotations = bacteria_annotations[~mask]
+    bacteria_annotations.set_index('Refseq', inplace=True)
+
+    if split_name == "plasmid_random":
+        train, test = train_test_split(plasmid_annotations, train_size=0.9)
+        return OriDataset(train, "/root/autodl-fs/sequences.fasta"), OriDataset(test, "/root/autodl-fs/sequences.fasta")
+    if split_name == "bacteria_random":
+        train, test = train_test_split(bacteria_annotations, train_size=0.9)
+        return OriDataset(train, "~/autodl-fs/bacterial_genomes.fasta"), OriDataset(test, "~/autodl-fs/bacterial_genomes.fasta")
     elif split_name == "taxonomy_islands":
 
         # Define the taxonomic levels

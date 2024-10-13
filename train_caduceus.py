@@ -28,7 +28,7 @@ device = "cuda:1"
 # We use batch size 1 to not have to deal with bidirectional Mamba padding
 #dataset = OriDataset("./DoriC12.1/")
 #train, test = torch.utils.data.random_split(dataset, [0.9, 0.1], torch.Generator().manual_seed(42))
-train, test = get_split("taxonomy_islands")
+train, test = get_split("plasmid_random")
 test_loader = DataLoader(test, batch_size=1, shuffle=False)
 
 # Initialize model
