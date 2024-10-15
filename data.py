@@ -4,6 +4,24 @@ import pandas as pd
 import random
 import torch
 from sklearn.model_selection import train_test_split
+from transformers import AutoTokenizer, get_cosine_schedule_with_warmup
+
+tokenizer = AutoTokenizer.from_pretrained("zhihan1996/DNABERT-2-117M", trust_remote_code=True)
+
+def get_token_index_for_nth_char(input_string, n):
+    # Tokenize the input string
+    encoded = tokenizer(input_string, return_offsets_mapping=True, add_special_tokens=True)
+    
+    # Get the offsets mapping
+    offsets = encoded['offset_mapping']
+    
+    # Find the token that contains the n-th character
+    for i, (start, end) in enumerate(offsets):
+        if start <= n < end:
+            return i
+    
+    # If n is out of range, return None or raise an exception
+    return None
 
 def random_subsequence(sequence, start, end, n):
     """Generate a random subsequence that contains the start and end location"""
@@ -45,7 +63,7 @@ class OriDataset(Dataset):
         self.sequences = [seq for seq in self.sequences if seq.id[:-2] in self.annotations.index]
         
         print("Before filtering:", len(self.sequences))
-        self.sequences = [seq for seq in self.sequences if len(seq.seq) <= 32000]
+        self.sequences = [seq for seq in self.sequences if len(seq.seq) <= 100000]
         print("After filtering:", len(self.sequences))
 
     def __getitem__(self, idx):
@@ -61,8 +79,17 @@ class OriDataset(Dataset):
         start = start % len(seq)
         end = end % len(seq)    
 
+        old_slen = len(seq)
+
+        start = get_token_index_for_nth_char(seq, start)
+        end = get_token_index_for_nth_char(seq, end)
+
+        seq = torch.tensor(tokenizer.encode(seq), dtype=torch.long)
+
         #seq, start, end = random_subsequence(seq, start, end, min(16000, len(seq)))
 
+        #print("seq lens:", old_slen, len(seq))
+        
         return seq, (start, end), label.to_dict()
 
     def __len__(self):
