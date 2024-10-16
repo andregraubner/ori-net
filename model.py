@@ -37,7 +37,7 @@ class OriNet(nn.Module):
     def __init__(self):
         super().__init__()
         model = CaduceusForMaskedLM(config)
-        model.load_state_dict(torch.load("/root/autodl-fs/model_1.pth"))
+        model.load_state_dict(torch.load("/root/autodl-fs/model_5.pth"))
         self.plasmamba = model
         self.ff = FeedForward(dim=512, hidden_dim=1024*8, dropout=0.2)
         self.head = nn.Linear(512, 2, bias=False)
@@ -45,7 +45,7 @@ class OriNet(nn.Module):
     def forward(self, inputs):
 
         x = self.plasmamba(inputs, output_hidden_states=True)["hidden_states"][-1]
-        x = self.ff(x)
+        #x = self.ff(x)
         x = self.head(x)
         
         return x

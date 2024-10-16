@@ -3,6 +3,7 @@ import torch
 import numpy as np
 from tqdm import tqdm
 import random
+from torch import nn
 
 from model import OriNet
 
@@ -34,13 +35,35 @@ wandb.init(
 
 tokenizer = AutoTokenizer.from_pretrained("zhihan1996/DNABERT-2-117M", trust_remote_code=True)
 
-train, test = get_split("plasmid_random")
+train, test = get_split("taxonomy_islands")
 test_loader = DataLoader(test, batch_size=1, shuffle=False)
 
 # Initialize some hyperparameters
 total_steps = 0
-grad_acc = 8
+grad_acc = 2
 n_epochs = 1
+
+class FocalLoss(nn.Module):
+    def __init__(self, alpha=1, gamma=2, reduction='mean'):
+        super(FocalLoss, self).__init__()
+        self.alpha = alpha
+        self.gamma = gamma
+        self.reduction = reduction
+
+    def forward(self, inputs, targets):
+        ce_loss = F.cross_entropy(inputs, targets, reduction='none')
+        pt = torch.exp(-ce_loss)
+        focal_loss = self.alpha * (1 - pt) ** self.gamma * ce_loss
+
+        if self.reduction == 'mean':
+            return torch.mean(focal_loss)
+        elif self.reduction == 'sum':
+            return torch.sum(focal_loss)
+        else:  # 'none'
+            return focal_loss
+
+# Usage example:
+criterion = FocalLoss(alpha=1, gamma=5)
 
 # Evaluation loop to run after every epoch
 # Calculates test loss and saves a graph visualizing predictions to 'figure.jpg'
@@ -82,6 +105,8 @@ def evaluate():
     plt.savefig("figure_split.jpg")
     plt.close()
     wandb.log({"test loss": np.mean(losses)}, step=total_steps)
+    print("VAL")
+    print(np.mean(losses))
 
 # Training loops
 for i in range(1):
@@ -99,7 +124,7 @@ for i in range(1):
     scheduler = get_cosine_schedule_with_warmup(
         optimizer, 
         num_training_steps=len(train_loader)*n_epochs//grad_acc, 
-        num_warmup_steps=16
+        num_warmup_steps=4
     )
     scaler = GradScaler()
 
@@ -114,7 +139,8 @@ for i in range(1):
             
             with autocast():
                 preds = model(token_ids)[:,:-1]
-                loss = F.cross_entropy(preds[:,:,0], labels[:,0]) + F.cross_entropy(preds[:,:,1], labels[:,1])
+                #loss = F.cross_entropy(preds[:,:,0], labels[:,0]) + F.cross_entropy(preds[:,:,1], labels[:,1])
+                loss = criterion(preds[:,:,0], labels[:,0]) + criterion(preds[:,:,1], labels[:,1])
                 loss /= grad_acc
 
             scaler.scale(loss).backward()

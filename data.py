@@ -6,6 +6,25 @@ import torch
 from sklearn.model_selection import train_test_split
 from transformers import AutoTokenizer, get_cosine_schedule_with_warmup
 
+import random
+
+def shift_string_cyclically(s, start, end):
+    # Ensure start and end are valid indices
+    if start < 0 or start >= len(s):
+        raise ValueError("Start point must be a valid index within the string.")
+
+    # Shift the string so that the start index is at the front
+    shifted_string = s[start:] + s[:start]
+
+    # New indices for start and end
+    new_start_index = 0
+    new_end_index = (end - start) % len(s)
+
+    shift_amount = random.randint(0, len(s) - new_end_index - 1)
+    shifted_string = shifted_string[-shift_amount:] + shifted_string[:-shift_amount]
+    
+    return shifted_string, shift_amount, new_end_index + shift_amount
+
 tokenizer = AutoTokenizer.from_pretrained("zhihan1996/DNABERT-2-117M", trust_remote_code=True)
 
 def get_token_index_for_nth_char(input_string, n):
@@ -81,13 +100,15 @@ class OriDataset(Dataset):
 
         old_slen = len(seq)
 
+        seq, start, end = shift_string_cyclically(seq, start, end)
+
         start = get_token_index_for_nth_char(seq, start)
         end = get_token_index_for_nth_char(seq, end)
 
         seq = torch.tensor(tokenizer.encode(seq), dtype=torch.long)
 
         #seq, start, end = random_subsequence(seq, start, end, min(16000, len(seq)))
-
+        
         #print("seq lens:", old_slen, len(seq))
         
         return seq, (start, end), label.to_dict()
@@ -121,24 +142,24 @@ def get_split(split_name):
         levels = ['Kingdom', 'Phylum', 'Class', 'Order', 'Family', 'Genus', 'Species', 'Strain']
         
         # Split the taxonomy column
-        annotations[levels] = annotations['Lineage'].str.split(',', expand=True)
+        plasmid_annotations[levels] = plasmid_annotations['Lineage'].str.split(',', expand=True)
         
         # Trim whitespace from the new columns
         for level in levels:
-            annotations[level] = annotations[level].str.strip()
+            plasmid_annotations[level] = plasmid_annotations[level].str.strip()
         
         # Fill NaN values with empty string
-        annotations[levels] = annotations[levels].fillna('')
+        plasmid_annotations[levels] = plasmid_annotations[levels].fillna('')
 
-        class_counts = annotations['Class'].value_counts()
+        class_counts = plasmid_annotations['Class'].value_counts()
 
         # Create a boolean mask for classes appearing over 25 times
-        mask = annotations['Class'].map(class_counts) > 25
+        mask = plasmid_annotations['Class'].map(class_counts) > 25
         
         # Split the dataframe
-        train = annotations[mask]
-        test = annotations[~mask]
+        train = plasmid_annotations[mask]
+        test = plasmid_annotations[~mask]
         
-        return OriDataset(train), OriDataset(test)
+        return OriDataset(train, "/root/autodl-fs/sequences.fasta"), OriDataset(test, "/root/autodl-fs/sequences.fasta")
     else: 
         raise ValueError
