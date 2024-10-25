@@ -272,10 +272,12 @@ class OriFlow(nn.Module):
 
     def forward(self, noised, times, cond):
 
+
+
         cond = self.plasmamba(cond, output_hidden_states=True)["hidden_states"][-1]
 
         b, s = noised.shape[:2]
-        t = self.time_mlp(times)
+        t = self.time_mlp(times).unsqueeze(1)
         
         x = rearrange(noised, "b s c -> b c s")
         x = self.init_conv(x)

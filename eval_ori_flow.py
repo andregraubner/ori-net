@@ -40,7 +40,7 @@ train, test = get_split("taxonomy_islands")
 test_loader = DataLoader(test, batch_size=1, shuffle=False)
 
 model = OriFlow().to(device)
-weights = torch.load("weights/model_0.pth")
+weights = torch.load("weights/flow_newnew_14.pth")
 model.load_state_dict(weights)
 
 flow = RectifiedFlow(model=model)
@@ -67,7 +67,7 @@ def evaluate():
         with autocast():
             with torch.inference_mode():
                 loss = flow(data=targets, cond=token_ids)
-                preds = flow.sample(cond=token_ids, data_shape=(token_ids.shape[1], 1), batch_size=16, steps=4)
+                preds = flow.sample(cond=token_ids, data_shape=(token_ids.shape[1], 1), batch_size=16, steps=8)
                 # calculate IoU
                 single_pred = preds[0,:,0]
                 ensemble = (preds > 0.5).float().mean(dim=0)[:,0]
@@ -87,8 +87,8 @@ def evaluate():
         #ax.axvline(x=end[0], color='indianred', linestyle='dashed', linewidth=1, label="experimental ORI end")
 
         ax.grid(True)
-
-        #ax.title.set_text(row["Organism"][0] + " / " + row["Class"][0])
+        
+        ax.title.set_text(str(iou.item()) + ", " + row["Organism"][0])
         ax.legend()        
         losses.append(loss.item())
         ious.append(iou.item())

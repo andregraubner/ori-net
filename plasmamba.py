@@ -9,6 +9,7 @@ from typing import Optional, Tuple, Union
 
 import torch
 from mamba_ssm.modules.mamba2_simple import Mamba2Simple
+from mamba_ssm.modules.mamba_simple import Mamba
 from mamba_ssm.modules.block import Block
 from mamba_ssm.modules.mlp import GatedMLP
 from torch import nn
@@ -49,6 +50,7 @@ class CaduceusConfig(PretrainedConfig):
             bidirectional_weight_tie: bool = True,
             rcps: bool = False,
             complement_map: Optional[dict] = None,  # used for RCPSEmbedding / RCPSLMHead
+            use_mamba1: bool = True,
             **kwargs,
     ):
         super().__init__(**kwargs)
@@ -68,6 +70,10 @@ class CaduceusConfig(PretrainedConfig):
         self.rcps = rcps
         self.complement_map = complement_map
 
+        print(use_mamba1, "HI")
+
+        self.use_mamba1 = use_mamba1
+
 def create_block(
         d_model,
         ssm_cfg=None,
@@ -82,6 +88,7 @@ def create_block(
         rcps=False,
         device=None,
         dtype=None,
+        use_mamba1=False,
 ):
     """Create Caduceus block.
 
@@ -94,6 +101,7 @@ def create_block(
         "bidirectional": bidirectional,
         "bidirectional_strategy": bidirectional_strategy,
         "bidirectional_weight_tie": bidirectional_weight_tie,
+        "use_mamba1": use_mamba1,
     }
     mixer_cls = partial(BiMambaWrapper, layer_idx=layer_idx, **ssm_cfg, **bidirectional_kwargs, **factory_kwargs)
     norm_cls = partial(
@@ -109,6 +117,7 @@ def create_block(
         residual_in_fp32=residual_in_fp32,
     )
     block.layer_idx = layer_idx
+    
     return block
 
 
@@ -121,6 +130,7 @@ class BiMambaWrapper(nn.Module):
             bidirectional: bool = True,
             bidirectional_strategy: Optional[str] = "add",
             bidirectional_weight_tie: bool = True,
+            use_mamba1=False,
             **mamba_kwargs,
     ):
         super().__init__()
@@ -130,10 +140,17 @@ class BiMambaWrapper(nn.Module):
             raise NotImplementedError(f"`{bidirectional_strategy}` strategy for bi-directionality is not implemented!")
         self.bidirectional = bidirectional
         self.bidirectional_strategy = bidirectional_strategy
-        self.mamba_fwd = Mamba2Simple(
-            d_model=d_model,
-            **mamba_kwargs
-        )
+        print(use_mamba1, "HIII")
+        if use_mamba1:
+            self.mamba_fwd = Mamba(
+                d_model=d_model,
+                **mamba_kwargs
+            )
+        else:
+            self.mamba_fwd = Mamba2Simple(
+                d_model=d_model,
+                **mamba_kwargs
+            )
         if bidirectional:
             self.mamba_rev = Mamba2Simple(
                 d_model=d_model,
@@ -229,6 +246,7 @@ class CaduceusMixerModel(nn.Module):
                     bidirectional_strategy=config.bidirectional_strategy,
                     bidirectional_weight_tie=config.bidirectional_weight_tie,
                     rcps=config.rcps,
+                    use_mamba1=config.use_mamba1,
                     **factory_kwargs,
                 )
                 for i in range(config.n_layer)

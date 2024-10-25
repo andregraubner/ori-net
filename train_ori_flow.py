@@ -74,7 +74,7 @@ weight=torch.tensor([0.1, 1.0], device="cuda", dtype=torch.float32)
 # Evaluation loop to run after every epoch
 # Calculates test loss and saves a graph visualizing predictions to 'figure.jpg'
 def evaluate(): 
-    model.eval()
+    flow.eval()
     losses = []
     ious = []
 
@@ -137,7 +137,6 @@ def evaluate():
         "test loss": np.mean(losses),
         "test IoU": np.mean(ious)
     }, step=total_steps)
-    print("VAL")
     print(np.mean(losses), np.mean(ious))
 
 # Training loops
@@ -167,7 +166,7 @@ for i in range(1):
     for epoch in range(n_epochs):
 
         for step, (token_ids, labels, row) in enumerate(tqdm(train_loader)):
-            model.train()
+            flow.train()
 
             labels = torch.stack(labels, axis=1).long().to(device)
             token_ids = token_ids.to(device)
@@ -204,7 +203,6 @@ for i in range(1):
                     "train loss": np.mean(losses),
                     "lr": optimizer.param_groups[0]['lr']
                 }, step=total_steps)
-                print(np.mean(losses))
                 losses = []
 
             total_steps += 1
