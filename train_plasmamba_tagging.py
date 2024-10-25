@@ -5,7 +5,7 @@ from tqdm import tqdm
 import random
 from torch import nn
 
-from model import OriNet
+from model import OriNet, OriNetCRF
 
 from data import get_split
 from torch.utils.data import DataLoader
@@ -26,11 +26,12 @@ import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data.distributed import DistributedSampler
 from torch.cuda.amp import GradScaler, autocast
+from einops import rearrange
 
 device = "cuda"
 
 wandb.init(
-    project="ori-net-plasmamba",
+    project="ori-net-tagging",
 )
 
 tokenizer = AutoTokenizer.from_pretrained("zhihan1996/DNABERT-2-117M", trust_remote_code=True)
@@ -63,7 +64,8 @@ class FocalLoss(nn.Module):
             return focal_loss
 
 # Usage example:
-criterion = FocalLoss(alpha=1, gamma=5)
+criterion = FocalLoss(alpha=0.1, gamma=5)
+weight=torch.tensor([0.1, 1.0], device="cuda", dtype=torch.float32)
 
 # Evaluation loop to run after every epoch
 # Calculates test loss and saves a graph visualizing predictions to 'figure.jpg'
@@ -75,26 +77,41 @@ def evaluate():
     ncols = 1
     fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=(10, 4 * nrows))
 
-    for (token_ids, labels, row), ax in zip(test_loader, axes): 
+    for (token_ids, labels, row), ax in tqdm(zip(test_loader, axes)): 
 
         start, end = labels
         
         labels = torch.stack(labels, axis=1).long().to(device)    
         token_ids = token_ids.cuda()
 
+        targets = torch.zeros((1, token_ids.shape[1]), dtype=torch.long, device=device)
+        targets[0, labels[0,0]:labels[0,1]+1] = 1  
+
         with torch.no_grad():
-            preds = model(token_ids)[:,:-1]
-            loss = F.cross_entropy(preds[:,:,0], labels[:,0]) + F.cross_entropy(preds[:,:,1], labels[:,1])
+            logits, loss = model(token_ids, targets)
+            #preds = model(token_ids)#[:,:-1]
+            #loss = F.cross_entropy(
+            #    rearrange(preds, "b s c -> (b s) c"), 
+            #    rearrange(targets, "b s -> (b s)"),
+            #    weight=weight
+            #)
+            #loss = criterion(
+            #    rearrange(preds, "b s c -> (b s) c"), 
+            #    rearrange(targets, "b s -> (b s)"),
+            #)
+            #loss = F.cross_entropy(preds.permute(0,2,1), targets)
  
-        preds = F.softmax(preds, dim=1)
+        #preds = F.softmax(preds, dim=-1)
+        preds = model(token_ids)
 
         preds = preds[0]
         length = preds.shape[0]
 
-        ax.plot(range(1,length+1), preds[:,0].to(torch.float32).cpu().numpy(), color="cornflowerblue", linewidth=2, label="predicted ORI start")
-        ax.plot(range(1,length+1), preds[:,1].to(torch.float32).cpu().numpy(), color="lightcoral", linewidth=2, label="predicted ORI end")
-        ax.axvline(x=start[0], color='royalblue', linestyle='dashed', linewidth=1, label="experimental ORI start")
-        ax.axvline(x=end[0], color='indianred', linestyle='dashed', linewidth=1, label="experimental ORI end")
+        #ax.plot(range(1,length+1), preds[:,0].to(torch.float32).cpu().numpy(), color="cornflowerblue", linewidth=2, label="predicted ORI start")
+        ax.plot(range(1,length+1), preds.to(torch.float32).cpu().numpy(), color="lightcoral", linewidth=2, label="predicted ORI")
+        ax.plot(range(1,length+1), targets[0].to(torch.float32).cpu().numpy(), color="royalblue", linewidth=2, label="experimental ORI ")
+        #ax.axvline(x=start[0], color='royalblue', linestyle='dashed', linewidth=1, label="experimental ORI start")
+        #ax.axvline(x=end[0], color='indianred', linestyle='dashed', linewidth=1, label="experimental ORI end")
 
         ax.grid(True)
 
@@ -109,17 +126,18 @@ def evaluate():
     print(np.mean(losses))
 
 # Training loops
+    
 for i in range(1):
 
     # Create new model
-    model = OriNet().to(device)
+    model = OriNetCRF().to(device)
 
     # Create random subset for bootstrapping
     indices = random.sample(range(len(train)), int(1.0 * len(train)))
     train_subset = torch.utils.data.Subset(train, indices)
     train_loader = DataLoader(train_subset, batch_size=1, shuffle=True)
 
-    optimizer = torch.optim.AdamW(model.parameters(), lr=5e-5, weight_decay=0.0)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4, weight_decay=0.0)
 
     scheduler = get_cosine_schedule_with_warmup(
         optimizer, 
@@ -129,6 +147,7 @@ for i in range(1):
     scaler = GradScaler()
 
     losses = []
+
     for epoch in range(n_epochs):
 
         for step, (token_ids, labels, row) in enumerate(tqdm(train_loader)):
@@ -136,10 +155,24 @@ for i in range(1):
 
             labels = torch.stack(labels, axis=1).long().to(device)
             token_ids = token_ids.to(device)
+
+            targets = torch.zeros((1, token_ids.shape[1]), dtype=torch.long, device=device)
+            targets[0, labels[0,0]:labels[0,1]+1] = 1 
             
             with autocast():
-                preds = model(token_ids)[:,:-1]
-                loss = F.cross_entropy(preds[:,:,0], labels[:,0]) + F.cross_entropy(preds[:,:,1], labels[:,1])
+                logits, loss = model(token_ids, targets)
+                
+                
+                #preds = model(token_ids) #[:,:-1]
+                #loss = F.cross_entropy(
+                #    rearrange(preds, "b s c -> (b s) c"), 
+                #    rearrange(targets, "b s -> (b s)"),
+                #    weight=weight
+                #)
+                #loss = criterion(
+                #    rearrange(preds, "b s c -> (b s) c"), 
+                #    rearrange(targets, "b s -> (b s)"),
+                #)
                 #loss = criterion(preds[:,:,0], labels[:,0]) + criterion(preds[:,:,1], labels[:,1])
                 loss /= grad_acc
 

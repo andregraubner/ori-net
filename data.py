@@ -83,6 +83,7 @@ class OriDataset(Dataset):
         
         print("Before filtering:", len(self.sequences))
         self.sequences = [seq for seq in self.sequences if len(seq.seq) <= 100000]
+        #self.sequences = [seq for seq in self.sequences if len(seq.seq) <= 50000]
         print("After filtering:", len(self.sequences))
 
     def __getitem__(self, idx):
