@@ -70,8 +70,6 @@ class CaduceusConfig(PretrainedConfig):
         self.rcps = rcps
         self.complement_map = complement_map
 
-        print(use_mamba1, "HI")
-
         self.use_mamba1 = use_mamba1
 
 def create_block(
@@ -140,17 +138,10 @@ class BiMambaWrapper(nn.Module):
             raise NotImplementedError(f"`{bidirectional_strategy}` strategy for bi-directionality is not implemented!")
         self.bidirectional = bidirectional
         self.bidirectional_strategy = bidirectional_strategy
-        print(use_mamba1, "HIII")
-        if use_mamba1:
-            self.mamba_fwd = Mamba(
-                d_model=d_model,
-                **mamba_kwargs
-            )
-        else:
-            self.mamba_fwd = Mamba2Simple(
-                d_model=d_model,
-                **mamba_kwargs
-            )
+        self.mamba_fwd = Mamba2Simple(
+            d_model=d_model,
+            **mamba_kwargs
+        )
         if bidirectional:
             self.mamba_rev = Mamba2Simple(
                 d_model=d_model,

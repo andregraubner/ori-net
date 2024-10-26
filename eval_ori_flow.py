@@ -40,10 +40,14 @@ train, test = get_split("taxonomy_islands")
 test_loader = DataLoader(test, batch_size=1, shuffle=False)
 
 model = OriFlow().to(device)
-weights = torch.load("weights/flow_newnew_14.pth")
-model.load_state_dict(weights)
 
-flow = RectifiedFlow(model=model)
+flow = RectifiedFlow(
+        model=model,
+        loss_fn="pseudo_huber",
+    )
+
+weights = torch.load("weights/flow_newnew_14.pth")
+flow.load_state_dict(weights)
 
 def evaluate(): 
     model.eval()
@@ -67,7 +71,7 @@ def evaluate():
         with autocast():
             with torch.inference_mode():
                 loss = flow(data=targets, cond=token_ids)
-                preds = flow.sample(cond=token_ids, data_shape=(token_ids.shape[1], 1), batch_size=16, steps=8)
+                preds = flow.sample(cond=token_ids, data_shape=(token_ids.shape[1], 1), batch_size=2, steps=1)
                 # calculate IoU
                 single_pred = preds[0,:,0]
                 ensemble = (preds > 0.5).float().mean(dim=0)[:,0]

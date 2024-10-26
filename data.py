@@ -8,7 +8,7 @@ from transformers import AutoTokenizer, get_cosine_schedule_with_warmup
 
 import random
 
-def shift_string_cyclically(s, start, end):
+def shift_string_cyclically(s, start, end, max_length):
     # Ensure start and end are valid indices
     if start < 0 or start >= len(s):
         raise ValueError("Start point must be a valid index within the string.")
@@ -20,8 +20,9 @@ def shift_string_cyclically(s, start, end):
     new_start_index = 0
     new_end_index = (end - start) % len(s)
 
-    shift_amount = random.randint(0, len(s) - new_end_index - 1)
+    shift_amount = random.randint(0, min(len(s) - new_end_index - 1, max_length-new_end_index-1))
     shifted_string = shifted_string[-shift_amount:] + shifted_string[:-shift_amount]
+    shifted_string = shifted_string[:max_length]
     
     return shifted_string, shift_amount, new_end_index + shift_amount
 
@@ -76,13 +77,16 @@ class OriDataset(Dataset):
     def __init__(self, annotations, sequences):
 
         self.annotations = annotations
-        self.sequences = list(SeqIO.parse(sequences, "fasta"))
+        self.sequences = sequences
 
         # Filter out, have to take seq.id[:-2] because the download added .1 or .2 if we had multiple entries
-        self.sequences = [seq for seq in self.sequences if seq.id[:-2] in self.annotations.index]
+        print(self.annotations.index[:10])
+        print([seq.id for seq in self.sequences][:10])
+        #self.sequences = [seq for seq in self.sequences if seq.id[:-2] in self.annotations.index]
+        self.sequences = [seq for seq in self.sequences if seq.id in self.annotations.index]
         
         print("Before filtering:", len(self.sequences))
-        self.sequences = [seq for seq in self.sequences if len(seq.seq) <= 100000]
+        #self.sequences = [seq for seq in self.sequences if len(seq.seq) <= 100000]
         #self.sequences = [seq for seq in self.sequences if len(seq.seq) <= 50000]
         print("After filtering:", len(self.sequences))
 
@@ -90,7 +94,10 @@ class OriDataset(Dataset):
 
         data = self.sequences[idx]
         seq = str(data.seq)
-        label = self.annotations.loc[data.id[:-2]]
+        #label = self.annotations.loc[data.id[:-2]]
+        label = self.annotations.loc[data.id]
+        if type(label) == pd.DataFrame:
+            label = label.sample(1).iloc[0] # we might have multiple Oris, so we sample one.
         start = label["OriC start"] - 1
         end = label["OriC end"] - 1
 
@@ -101,7 +108,7 @@ class OriDataset(Dataset):
 
         old_slen = len(seq)
 
-        seq, start, end = shift_string_cyclically(seq, start, end)
+        seq, start, end = shift_string_cyclically(seq, start, end, max_length=100000)
 
         start = get_token_index_for_nth_char(seq, start)
         end = get_token_index_for_nth_char(seq, end)
@@ -120,23 +127,25 @@ class OriDataset(Dataset):
 def get_split(split_name):
 
     plasmid_annotations = pd.read_csv("DoriC12.1/DoriC12.1_plasmid.csv")
-    print(plasmid_annotations.head())
-    mask = plasmid_annotations.duplicated('Refseq', keep=False)
-    plasmid_annotations = plasmid_annotations[~mask]
-    plasmid_annotations.set_index('Refseq', inplace=True)
+    #mask = plasmid_annotations.duplicated('Refseq', keep=False)
+    #plasmid_annotations = plasmid_annotations[~mask]
+    plasmid_annotations["NC"] = plasmid_annotations["NC"].astype(str) + ".1"
+    plasmid_annotations.set_index('NC', inplace=True)
 
     bacteria_annotations = pd.read_csv("DoriC12.1/DoriC12.1_bacteria.csv")
-    print(bacteria_annotations.head())
-    mask = bacteria_annotations.duplicated('Refseq', keep=False)
-    bacteria_annotations = bacteria_annotations[~mask]
-    bacteria_annotations.set_index('Refseq', inplace=True)
+    #mask = bacteria_annotations.duplicated('Refseq', keep=False)
+    #bacteria_annotations = bacteria_annotations[~mask]
+    #bacteria_annotations = bacteria_annotations[bacteria_annotations["Assembly level"] == "Complete"]
+    bacteria_annotations.set_index('NC', inplace=True)
 
     if split_name == "plasmid_random":
         train, test = train_test_split(plasmid_annotations, train_size=0.9)
-        return OriDataset(train, "/root/autodl-fs/sequences.fasta"), OriDataset(test, "/root/autodl-fs/sequences.fasta")
+        sequences = list(SeqIO.parse("/root/autodl-fs/sequences.fasta", "fasta"))
+        return OriDataset(train, sequences), OriDataset(test, sequences)
     if split_name == "bacteria_random":
-        train, test = train_test_split(bacteria_annotations, train_size=0.9)
-        return OriDataset(train, "~/autodl-fs/bacterial_genomes.fasta"), OriDataset(test, "~/autodl-fs/bacterial_genomes.fasta")
+        train, test = train_test_split(bacteria_annotations, train_size=0.999)
+        sequences = list(SeqIO.parse("/root/autodl-fs/bacterial_genomes.fasta", "fasta"))
+        return OriDataset(train, sequences), OriDataset(test, sequences)
     elif split_name == "taxonomy_islands":
 
         # Define the taxonomic levels

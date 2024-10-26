@@ -40,13 +40,16 @@ wandb.init(
 
 tokenizer = AutoTokenizer.from_pretrained("zhihan1996/DNABERT-2-117M", trust_remote_code=True)
 
-train, test = get_split("taxonomy_islands")
-test_loader = DataLoader(test, batch_size=1, shuffle=False)
+train, test = get_split("bacteria_random")
+#train, test = get_split("plasmid_random")
+_, plasmid_test = get_split("plasmid_random")
+#test_loader = DataLoader(test, batch_size=1, shuffle=False)
+#plasmid_test_loader = DataLoader(plasmid_test, batch_size=1, shuffle=False)
 
 # Initialize some hyperparameters
 total_steps = 0
-grad_acc = 4
-n_epochs = 15
+grad_acc = 1
+n_epochs = 2
 
 class FocalLoss(nn.Module):
     def __init__(self, alpha=1, gamma=2, reduction='mean'):
@@ -73,15 +76,17 @@ weight=torch.tensor([0.1, 1.0], device="cuda", dtype=torch.float32)
 
 # Evaluation loop to run after every epoch
 # Calculates test loss and saves a graph visualizing predictions to 'figure.jpg'
-def evaluate(): 
+def evaluate(test_set, path="out.jpg"): 
     flow.eval()
     losses = []
     ious = []
 
-    nrows = len(test)
+    nrows = len(test_set)
     ncols = 1
     fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=(10, 4 * nrows))
 
+    test_loader = DataLoader(test_set, batch_size=1, shuffle=False)
+    
     for (token_ids, labels, row), ax in tqdm(zip(test_loader, axes)): 
 
         start, end = labels
@@ -89,49 +94,44 @@ def evaluate():
         labels = torch.stack(labels, axis=1).long().to(device)    
         token_ids = token_ids.cuda()
 
-        targets = torch.zeros((1, token_ids.shape[1], 1), dtype=torch.float32, device=device)
+        # had (1, n, 1) here before
+        targets = torch.zeros((1, token_ids.shape[1]), dtype=torch.float32, device=device)
         targets[0, labels[0,0]:labels[0,1]+1] = 1  
 
-        with torch.inference_mode():
-            loss = flow(data=targets, cond=token_ids)
-            #preds = model(token_ids)#[:,:-1]
-            #loss = F.cross_entropy(
-            #    rearrange(preds, "b s c -> (b s) c"), 
-            #    rearrange(targets, "b s -> (b s)"),
-            #    weight=weight
-            #)
-            #loss = criterion(
-            #    rearrange(preds, "b s c -> (b s) c"), 
-            #    rearrange(targets, "b s -> (b s)"),
-            #)
-            #loss = F.cross_entropy(preds.permute(0,2,1), targets)
- 
-            #preds = F.softmax(preds, dim=-1)
-            preds = flow.sample(cond=token_ids, data_shape=(token_ids.shape[1], 1), steps=4)
+        targets = targets.unsqueeze(1)
+        targets = F.interpolate(targets, scale_factor=(0.1), mode='linear')
+        targets = rearrange(targets, "b c s -> b s c")
 
-        preds = preds[0]
-        length = preds.shape[0]
+        with autocast():
+            with torch.inference_mode():
+                loss = flow(data=targets, cond=token_ids)
+                preds = flow.sample(cond=token_ids, data_shape=(targets.shape[1], 1), batch_size=8, steps=2)
+                # calculate IoU
+                single_pred = preds[0,:,0]
+                ensemble = (preds > 0.5).float().mean(dim=0)[:,0]
 
-        # calculate IoU
-        hard_preds = (preds > 0.5).float()
-        overlap = hard_preds * targets[0,:,0]
-        union = hard_preds + targets[0,:,0]
+        length = ensemble.shape[0]
+        hard_preds = (ensemble > 0.5).float()
+        
+        overlap = hard_preds * (targets[0,:,0] > 0.5).float()
+        union = hard_preds + (targets[0,:,0] > 0.5).float()
         iou = overlap.sum() / float(union.sum())
 
         #ax.plot(range(1,length+1), preds[:,0].to(torch.float32).cpu().numpy(), color="cornflowerblue", linewidth=2, label="predicted ORI start")
-        ax.plot(range(1,length+1), preds.to(torch.float32).cpu().numpy(), color="lightcoral", linewidth=2, label="predicted ORI")
-        ax.plot(range(1,length+1), targets[0].to(torch.float32).cpu().numpy(), color="royalblue", linewidth=2, label="experimental ORI ")
+        ax.plot(range(1,length+1), single_pred.to(torch.float32).cpu().numpy(), color="lightcoral", linewidth=1, label="single sample ORI prediction")
+        ax.plot(range(1,length+1), ensemble.to(torch.float32).cpu().numpy(), color="indianred", linewidth=4, label="ensembled ORI prediction")
+        ax.plot(range(1,length+1), targets[0].to(torch.float32).cpu().numpy(), color="royalblue", linewidth=3, label="experimental ORI ")
         #ax.axvline(x=start[0], color='royalblue', linestyle='dashed', linewidth=1, label="experimental ORI start")
         #ax.axvline(x=end[0], color='indianred', linestyle='dashed', linewidth=1, label="experimental ORI end")
 
         ax.grid(True)
-
-        #ax.title.set_text(row["Organism"][0] + " / " + row["Class"][0])
+        
+        ax.title.set_text(str(iou.item()) + ", " + row["Organism"][0])
         ax.legend()        
         losses.append(loss.item())
         ious.append(iou.item())
 
-    plt.savefig("figure_split.jpg")
+    plt.savefig(path)
     plt.close()
     wandb.log({
         "test loss": np.mean(losses),
@@ -145,14 +145,17 @@ for i in range(1):
 
     # Create new model
     model = OriFlow().to(device)
-    flow = RectifiedFlow(model=model)
+    flow = RectifiedFlow(
+        model=model,
+        #loss_fn="pseudo_huber",
+    )
 
     # Create random subset for bootstrapping
     indices = random.sample(range(len(train)), int(1.0 * len(train)))
     train_subset = torch.utils.data.Subset(train, indices)
     train_loader = DataLoader(train_subset, batch_size=1, shuffle=True)
 
-    optimizer = torch.optim.AdamW(flow.parameters(), lr=3e-4, weight_decay=0.0)
+    optimizer = torch.optim.AdamW(flow.parameters(), lr=1e-4, weight_decay=0.0)
 
     scheduler = get_cosine_schedule_with_warmup(
         optimizer, 
@@ -171,9 +174,14 @@ for i in range(1):
             labels = torch.stack(labels, axis=1).long().to(device)
             token_ids = token_ids.to(device)
 
-            targets = torch.zeros((1, token_ids.shape[1], 1), dtype=torch.float32, device=device)
+            targets = torch.zeros((1, token_ids.shape[1]), dtype=torch.float32, device=device)
             targets[0, labels[0,0]:labels[0,1]+1] = 1 
-            
+
+            # resizing here
+            targets = targets.unsqueeze(1)
+            targets = F.interpolate(targets, scale_factor=(0.1), mode='linear')
+            targets = rearrange(targets, "b c s -> b s c")
+                        
             with autocast():
                 
                 loss = flow(data=targets, cond=token_ids)
@@ -207,12 +215,13 @@ for i in range(1):
 
             total_steps += 1
 
-        if epoch % 1 == 0:
-            evaluate()
-            torch.save(model.state_dict(), f"weights/flow_newnew_{epoch}.pth")
-            print("saved model!")
+            if total_steps % 10000 == 0:
+                evaluate(test, "bacterial_test.jpg")
+                evaluate(plasmid_test, "plasmid_test.jpg")
+                torch.save(flow.state_dict(), f"weights/flow_newnew_{epoch}.pth")
+                print("saved model!")
 
     evaluate()
-    torch.save(model.state_dict(), f"weights/flow_newnew_{epoch}.pth")
+    torch.save(flow.state_dict(), f"weights/flow_newnew_{epoch}.pth")
     print("saved model!")
     #evaluate()
