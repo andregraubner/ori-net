@@ -267,21 +267,19 @@ class OriFlow(nn.Module):
             nn.Linear(512, 512)
         )
 
-        self.init_conv = nn.Conv1d(1, 256, 3, padding='same', padding_mode="circular")
-        self.final_conv = nn.Conv1d(256, 1, 3, padding='same', padding_mode="circular")
+        #self.init_conv = nn.Conv1d(1, 256, 3, padding='same', padding_mode="circular")
+        #self.final_conv = nn.Conv1d(256, 1, 3, padding='same', padding_mode="circular")
+        self.init_proj = nn.Linear(1, 256)
+        self.final_proj = nn.Linear(256, 1)
 
     def forward(self, noised, times, cond):
-
-
 
         cond = self.plasmamba(cond, output_hidden_states=True)["hidden_states"][-1]
 
         b, s = noised.shape[:2]
         t = self.time_mlp(times).unsqueeze(1)
         
-        x = rearrange(noised, "b s c -> b c s")
-        x = self.init_conv(x)
-        x = rearrange(x, "b c s -> b s c")
+        x = self.init_proj(noised)
 
         c = self.down_proj(cond)
         
@@ -295,8 +293,6 @@ class OriFlow(nn.Module):
             x = hydra(x, c)
             x += residual
 
-        x = rearrange(x, "b s c -> b c s")
-        x = self.final_conv(x)
-        x = rearrange(x, "b c s -> b s c")
+        x = self.final_proj(x)
         
         return x

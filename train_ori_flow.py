@@ -42,7 +42,7 @@ tokenizer = AutoTokenizer.from_pretrained("zhihan1996/DNABERT-2-117M", trust_rem
 
 train, test = get_split("bacteria_random")
 #train, test = get_split("plasmid_random")
-_, plasmid_test = get_split("plasmid_random")
+_, plasmid_test = get_split("plasmid_taxonomy_islands")
 #test_loader = DataLoader(test, batch_size=1, shuffle=False)
 #plasmid_test_loader = DataLoader(plasmid_test, batch_size=1, shuffle=False)
 
@@ -99,7 +99,7 @@ def evaluate(test_set, path="out.jpg"):
         targets[0, labels[0,0]:labels[0,1]+1] = 1  
 
         targets = targets.unsqueeze(1)
-        targets = F.interpolate(targets, scale_factor=(0.1), mode='linear')
+        #targets = F.interpolate(targets, scale_factor=(0.1), mode='linear')
         targets = rearrange(targets, "b c s -> b s c")
 
         with autocast():
@@ -134,8 +134,8 @@ def evaluate(test_set, path="out.jpg"):
     plt.savefig(path)
     plt.close()
     wandb.log({
-        "test loss": np.mean(losses),
-        "test IoU": np.mean(ious)
+        f"test loss ({path})": np.mean(losses),
+        f"test IoU ({path})": np.mean(ious)
     }, step=total_steps)
     print(np.mean(losses), np.mean(ious))
 
@@ -179,7 +179,7 @@ for i in range(1):
 
             # resizing here
             targets = targets.unsqueeze(1)
-            targets = F.interpolate(targets, scale_factor=(0.1), mode='linear')
+            #targets = F.interpolate(targets, scale_factor=(0.1), mode='linear')
             targets = rearrange(targets, "b c s -> b s c")
                         
             with autocast():
@@ -215,13 +215,13 @@ for i in range(1):
 
             total_steps += 1
 
-            if total_steps % 10000 == 0:
+            if total_steps % 5000 == 0:
                 evaluate(test, "bacterial_test.jpg")
                 evaluate(plasmid_test, "plasmid_test.jpg")
-                torch.save(flow.state_dict(), f"weights/flow_newnew_{epoch}.pth")
+                torch.save(flow.state_dict(), f"weights/pretrained_{total_steps}.pth")
                 print("saved model!")
 
     evaluate()
-    torch.save(flow.state_dict(), f"weights/flow_newnew_{epoch}.pth")
+    torch.save(flow.state_dict(), f"weights/pretrained_{total_steps}.pth")
     print("saved model!")
     #evaluate()
