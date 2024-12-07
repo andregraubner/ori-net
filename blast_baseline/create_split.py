@@ -39,4 +39,6 @@ sequences = {seq.id: str(seq.seq) for seq in SeqIO.parse("sequences.fasta", "fas
 print(f"Creating test database of {len(sequences)} sequences")
 with open('test.fasta', 'w') as f:
     for k, v in sequences.items():
-        f.write(f'>{k}\n{v}\n') 
+        # We duplicate the sequence once so we can deal with the wrap-around.
+        # There might be more elegant ways to do this, but this works...
+        f.write(f'>{k}\n{v}{v}\n') 
