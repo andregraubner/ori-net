@@ -60,9 +60,10 @@ for name, row in test.iterrows():
             labels[:end] = 1
             labels[start:] = 1
 
-        print(int(pred["end"]) - int(pred["start"]))
+        pred_start = int(pred["start"]) % len(seq)
+        pred_end = int(pred["end"]) % len(seq)
 
-        preds[int(pred["start"]):int(pred["end"])] = 1
+        preds[pred_start:pred_end] = 1
 
         iou = jaccard_score(labels, preds)
         ious.append(iou)
