@@ -2,7 +2,7 @@ from Bio import SeqIO
 import pandas as pd
 import random
 
-plasmid_annotations = pd.read_csv("DoriC12.1/DoriC12.1_plasmid.csv")
+plasmid_annotations = pd.read_csv("../DoriC12.1/DoriC12.1_plasmid.csv")
 plasmid_annotations["NC"] = plasmid_annotations["NC"].astype(str) + ".1"
 plasmid_annotations.set_index('NC', inplace=True)
 
@@ -35,7 +35,7 @@ with open('oris.fasta', 'w') as f:
         f.write(f'>{k}\n{v}\n')
 
 
-sequences = {seq.id: str(seq.seq) for seq in SeqIO.parse("sequences.fasta", "fasta") if seq.id in test.index}
+sequences = {seq.id: str(seq.seq) for seq in SeqIO.parse("/root/autodl-fs/sequences.fasta", "fasta") if seq.id in test.index}
 print(f"Creating test database of {len(sequences)} sequences")
 with open('test.fasta', 'w') as f:
     for k, v in sequences.items():
