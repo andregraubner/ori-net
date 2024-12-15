@@ -4,7 +4,7 @@ import random
 from sklearn.metrics import jaccard_score
 import numpy as np
 
-plasmid_annotations = pd.read_csv("DoriC12.1/DoriC12.1_plasmid.csv")
+plasmid_annotations = pd.read_csv("../DoriC12.1/DoriC12.1_plasmid.csv")
 plasmid_annotations["NC"] = plasmid_annotations["NC"].astype(str) + ".1"
 plasmid_annotations.set_index('NC', inplace=True)
 
@@ -33,7 +33,7 @@ test = plasmid_annotations[~mask]
 results = pd.read_csv("results.csv", names=["id", "evalue", "length", "start", "end"])
 results.set_index("id", inplace=True)
 
-sequences = {seq.id: str(seq.seq) for seq in SeqIO.parse("sequences.fasta", "fasta") if seq.id in test.index}
+sequences = {seq.id: str(seq.seq) for seq in SeqIO.parse("/root/autodl-fs/sequences.fasta", "fasta") if seq.id in test.index}
 
 ious = []
 

@@ -9,6 +9,8 @@ from transformers import AutoTokenizer
 from utils import shift_ori
 
 nt_tokenizer = AutoTokenizer.from_pretrained("InstaDeepAI/segment_nt_multi_species", trust_remote_code=True)
+caduceus_tokenizer = AutoTokenizer.from_pretrained("kuleshov-group/caduceus-ps_seqlen-131k_d_model-256_n_layer-16", trust_remote_code=True)
+
 
 class OriDataset(Dataset):
 
@@ -61,6 +63,24 @@ class OriDataset(Dataset):
             padding="max_length", 
             max_length=self.max_length // 6 + 1
         )["input_ids"]
+    
+        return seqs, tokens, targets, metadata
+
+    def collate_caduceus(self, batch):
+
+        seqs, labels, metadata = zip(*batch)
+        bs = len(labels)
+        assert bs == 1, "Caduceus only supports batch size 1!"
+        
+        # Create one-hot target tensor
+        targets = torch.zeros(bs, len(seqs[0]), dtype=torch.long)
+        for i, (start, end) in enumerate(labels):
+            targets[i, start:end + 1] = 1 
+        
+        tokens = torch.tensor(
+            caduceus_tokenizer.encode(seqs[0]),
+            dtype=torch.int,
+        ).unsqueeze(0).long()
     
         return seqs, tokens, targets, metadata
 

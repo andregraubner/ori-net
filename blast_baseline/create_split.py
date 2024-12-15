@@ -4,6 +4,10 @@ import random
 
 plasmid_annotations = pd.read_csv("../DoriC12.1/DoriC12.1_plasmid.csv")
 plasmid_annotations["NC"] = plasmid_annotations["NC"].astype(str) + ".1"
+
+mask = plasmid_annotations.duplicated('Refseq', keep=False)
+plasmid_annotations = plasmid_annotations[~mask]
+
 plasmid_annotations.set_index('NC', inplace=True)
 
 # Define the taxonomic levels
@@ -37,8 +41,14 @@ with open('oris.fasta', 'w') as f:
 
 sequences = {seq.id: str(seq.seq) for seq in SeqIO.parse("/root/autodl-fs/sequences.fasta", "fasta") if seq.id in test.index}
 print(f"Creating test database of {len(sequences)} sequences")
-with open('test.fasta', 'w') as f:
+with open('test_blast.fasta', 'w') as f:
     for k, v in sequences.items():
         # We duplicate the sequence once so we can deal with the wrap-around.
         # There might be more elegant ways to do this, but this works...
         f.write(f'>{k}\n{v}{v}\n') 
+
+with open('test.fasta', 'w') as f:
+    for k, v in sequences.items():
+        # We duplicate the sequence once so we can deal with the wrap-around.
+        # There might be more elegant ways to do this, but this works...
+        f.write(f'>{k}\n{v}\n') 

@@ -2,6 +2,19 @@ import torch
 from torch import nn
 from transformers import AutoTokenizer, AutoModel
 
+class OriCaduceus(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.caduceus = AutoModel.from_pretrained("kuleshov-group/caduceus-ps_seqlen-131k_d_model-256_n_layer-16", trust_remote_code=True)
+        self.head = nn.Linear(512, 2, bias=False)
+
+    def forward(self, inputs):
+
+        x = self.caduceus(inputs)["last_hidden_state"]
+        x = self.head(x)
+        
+        return x
+
 class FinalConv1D(nn.Module):
     """
     Final output block of the 1D-UNET.
@@ -55,7 +68,7 @@ class FinalConv1D(nn.Module):
                 x = self._activation_fn(x)
         return x
 
-class OriNetNTSeg(nn.Module):
+class OriNT(nn.Module):
     def __init__(self):
         super().__init__()
         self.model = AutoModel.from_pretrained("InstaDeepAI/segment_nt_multi_species", trust_remote_code=True)
